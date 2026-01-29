@@ -96,52 +96,70 @@ namespace NovaFramework.Editor.Launcher
                 }
             }
             
-            // 显示确认对话框，询问用户是否开始自动安装
-            int dialogResult = EditorUtility.DisplayDialogComplex(
-                "NovaFramework 自动安装", 
-                "检测到这是首次启动，是否开始自动安装NovaFramework？\n\n" +
-                "自动安装将会:\n" +
+            // 显示统一安装进度窗口
+            _progressWindow = UnifiedInstallProgressWindow.ShowWindow();
+            
+            // 设置确认界面
+            _progressWindow.SetStep(UnifiedInstallProgressWindow.InstallStep.CheckEnvironment, "检测到这是首次启动，是否开始自动安装？");
+            
+            // 添加确认按钮
+            string confirmMessage = "自动安装将会:\n" +
                 "- 下载并安装必要的框架包\n" +
                 "- 配置项目环境\n" +
                 "- 设置所需的资源目录\n\n" +
-                "注意：安装过程可能需要几分钟时间，请耐心等待。", 
-                "开始安装", 
-                "取消", 
-                "稍后再说"
-            );
+                "注意：安装过程可能需要几分钟时间，请耐心等待。";
             
-            // 根据用户选择执行相应操作
-            if (dialogResult == 0) // "开始安装"
+            _progressWindow.AddLog(confirmMessage);
+            
+            // 添加确认按钮，使用Unity的Editor GUI来显示
+            EditorApplication.delayCall += () =>
             {
-                // 设置安装启动标志
-                _installationStarted = true;
-                
-                Debug.Log("ExecuteInstallation - Starting unified installation process");
-
-                // 显示统一安装进度窗口
-                _progressWindow = UnifiedInstallProgressWindow.ShowWindow();
-                
-                // 立即设置初始步骤并强制刷新界面
-                _progressWindow.SetStep(UnifiedInstallProgressWindow.InstallStep.CheckEnvironment, "检查安装环境...");
-                
                 // 强制刷新界面，确保立即显示内容
                 _progressWindow.Repaint();
                 
-                // 延迟执行安装，确保UI已渲染
-                EditorApplication.delayCall += DoExecuteInstallation;
-            }
-            else if (dialogResult == 1) // "取消"
-            {
-                Debug.Log("用户取消了自动安装，跳过安装过程。");
-                // 不设置任何标志，允许下次启动时再次询问
-                return;
-            }
-            else if (dialogResult == 2) // "稍后再说"
-            {
-                Debug.Log("用户选择了稍后再说，跳过安装过程。");
-                // 不设置任何标志，允许下次启动时再次询问
-                return;
-            }
+                // 弹出确认对话框，但这次使用的是安装窗口
+                int dialogResult = EditorUtility.DisplayDialogComplex(
+                    "NovaFramework 自动安装", 
+                    "检测到这是首次启动，是否开始自动安装NovaFramework？\n\n" +
+                    "自动安装将会:\n" +
+                    "- 下载并安装必要的框架包\n" +
+                    "- 配置项目环境\n" +
+                    "- 设置所需的资源目录\n\n" +
+                    "注意：安装过程可能需要几分钟时间，请耐心等待。", 
+                    "开始安装", 
+                    "取消", 
+                    "稍后再说"
+                );
+                
+                // 根据用户选择执行相应操作
+                if (dialogResult == 0) // "开始安装"
+                {
+                    // 设置安装启动标志
+                    _installationStarted = true;
+                    
+                    Debug.Log("ExecuteInstallation - Starting unified installation process");
+
+                    // 立即设置初始步骤并强制刷新界面
+                    _progressWindow.SetStep(UnifiedInstallProgressWindow.InstallStep.CheckEnvironment, "检查安装环境...");
+                    
+                    // 延迟执行安装，确保UI已渲染
+                    EditorApplication.delayCall += DoExecuteInstallation;
+                }
+                else if (dialogResult == 1) // "取消"
+                {
+                    Debug.Log("用户取消了自动安装，跳过安装过程。关闭窗口。");
+                    _progressWindow.Close();
+                    // 不设置任何标志，允许下次启动时再次询问
+                    return;
+                }
+                else if (dialogResult == 2) // "稍后再说"
+                {
+                    Debug.Log("用户选择了稍后再说，关闭窗口。");
+                    _progressWindow.Close();
+                    // 不设置任何标志，允许下次启动时再次询问
+                    return;
+                }
+            };
         }
 
         static void DoExecuteInstallation()
@@ -225,8 +243,29 @@ namespace NovaFramework.Editor.Launcher
                     // 删除已存在的目录
                     try
                     {
+                        // 先尝试等待一小段时间，让操作系统释放文件锁
+                        System.Threading.Thread.Sleep(1000);
+                        
                         Directory.Delete(packagePath, true); // 递归删除目录
                         _progressWindow?.AddLog($"Removed existing package directory: {packagePath}");
+                    }
+                    catch (UnauthorizedAccessException uaEx)
+                    {
+                        _progressWindow?.AddLog($"Unauthorized access error: {uaEx.Message}");
+                        Debug.LogWarning($"Access denied to directory {packagePath}: {uaEx.Message}");
+                        
+                        // 尝试以管理员权限或在不同上下文中处理
+                        try
+                        {
+                            // 重新尝试删除
+                            Directory.Delete(packagePath, true);
+                            _progressWindow?.AddLog($"Successfully removed directory after retry: {packagePath}");
+                        }
+                        catch
+                        {
+                            // 如果还是失败，尝试清空目录内容而不是删除目录本身
+                            ClearDirectoryContents(packagePath);
+                        }
                     }
                     catch (Exception deleteEx)
                     {
@@ -234,18 +273,7 @@ namespace NovaFramework.Editor.Launcher
                         Debug.LogWarning($"Could not remove existing directory {packagePath}: {deleteEx.Message}");
                         
                         // 尝试清空目录内容而不是删除目录本身
-                        var files = Directory.GetFiles(packagePath);
-                        var dirs = Directory.GetDirectories(packagePath);
-                        
-                        foreach (var file in files)
-                        {
-                            File.Delete(file);
-                        }
-                        
-                        foreach (var dir in dirs)
-                        {
-                            Directory.Delete(dir, true);
-                        }
+                        ClearDirectoryContents(packagePath);
                     }
                 }
                 
@@ -292,6 +320,41 @@ namespace NovaFramework.Editor.Launcher
                 _progressWindow?.SetError(errorMsg);
                 Debug.LogError(errorMsg);
                 onComplete?.Invoke(); // 确保即使失败也能继续
+            }
+        }
+        
+        // 辅助方法：清空目录内容
+        private static void ClearDirectoryContents(string directoryPath)
+        {
+            var files = Directory.GetFiles(directoryPath);
+            var dirs = Directory.GetDirectories(directoryPath);
+            
+            foreach (var file in files)
+            {
+                try
+                {
+                    File.SetAttributes(file, FileAttributes.Normal); // 移除只读属性
+                    File.Delete(file);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"Could not delete file {file}: {ex.Message}");
+                    // 可能文件被占用，等待后再试
+                    System.Threading.Thread.Sleep(500);
+                    try
+                    {
+                        File.Delete(file);
+                    }
+                    catch
+                    {
+                        Debug.LogError($"Failed to delete file after retry: {file}");
+                    }
+                }
+            }
+            
+            foreach (var dir in dirs)
+            {
+                Directory.Delete(dir, true);
             }
         }
 
