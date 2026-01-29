@@ -36,6 +36,8 @@ namespace NovaFramework.Editor.Launcher
 {
     public class PackageInstallerLauncher
     {
+        private static bool _installationStarted = false; // 防止重复安装的标志
+        private static bool _installationCompleted = false; // 标记安装是否已完成
         private static readonly Dictionary<string, string> _gitUrlDic = new Dictionary<string, string>()
         {
             {
@@ -54,6 +56,13 @@ namespace NovaFramework.Editor.Launcher
         [InitializeOnLoadMethod]
         static void ExecuteInstallation()
         {
+            // 检查是否已经启动安装，防止重复执行
+            if (_installationStarted)
+            {
+                Debug.Log("Installation already started. Skipping duplicate execution.");
+                return;
+            }
+            
             // 检查Nova.Installer.Editor程序集是否存在
             if (IsAssemblyExists("NovaEditor.Installer") || IsAssemblyExists("NovaEditor.Common"))
             {
@@ -61,6 +70,21 @@ namespace NovaFramework.Editor.Launcher
                 Debug.Log("Nova.Common.Editor assembly already exists. Skipping installation.");
                 return; // 如果程序集已存在，则跳过安装
             }
+            
+            // 额外检查：检查是否已经有安装完成的标记
+            string installerPath = Path.Combine(Directory.GetParent(Application.dataPath).ToString(), "Packages", "manifest.json");
+            if (File.Exists(installerPath))
+            {
+                string manifestContent = File.ReadAllText(installerPath);
+                if (manifestContent.Contains("com.novaframework.unity.installer"))
+                {
+                    Debug.Log("NovaFramework installer already exists in manifest.json. Skipping installation.");
+                    return; // 如果已经在manifest.json中存在，则跳过安装
+                }
+            }
+            
+            // 设置安装启动标志
+            _installationStarted = true;
             
             Debug.Log("ExecuteInstallation - Starting unified installation process");
 
@@ -419,6 +443,13 @@ namespace NovaFramework.Editor.Launcher
                         var stepCallback = new System.Action<int, string>((stepVal, detail) => {
                             var unifiedStep = MapAutoInstallStepToUnifiedStep(stepVal);
                             _progressWindow.SetStep(unifiedStep, detail);
+                            
+                            // 检查是否达到完成状态
+                            if (stepVal == 11) // AutoInstallManager.Complete 对应值为11
+                            {
+                                _installationCompleted = true;
+                                _progressWindow.AddLog("AutoInstallManager安装完成，设置完成标志。");
+                            }
                         });
                         
                         var packageProgressCallback = new System.Action<int, int, string>(_progressWindow.SetPackageProgress);
@@ -663,6 +694,10 @@ namespace NovaFramework.Editor.Launcher
                 // 使用 PackageManager 移除自身
                 Client.Remove(_launcherPackageName);
                 Debug.Log($"Successfully removed self: {_launcherPackageName}");
+                
+                // 标记安装已完成，避免重复执行
+                _installationCompleted = true;
+                
                 // 显示安装完成的消息框
                 EditorUtility.DisplayDialog("安装完成", "NovaFramework Installer 已成功安装！\n等待刷新完成后，按【 F8 】键完成后续安装。", "确定");
             }
