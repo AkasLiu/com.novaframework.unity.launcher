@@ -625,32 +625,6 @@ namespace NovaFramework.Editor.Launcher
         }
         
 
-        
-        private static void RemoveSelf()
-        {
-            try
-            {
-                // 使用 PackageManager 移除自身
-                Client.Remove(_launcherPackageName);
-                Debug.Log($"Successfully removed self: {_launcherPackageName}");
-                                
-                // 完成安装后，让AutoInstallManager处理后续流程（打开场景、配置中心等）
-                
-
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"Failed to remove self: {e.Message}");
-            }
-        }
-        
-        // 公共方法供其他类调用删除launcher包
-        public static void RemoveLauncherPackage()
-        {
-            RemoveSelf();
-        }
-
-
         public static bool IsAssemblyExists(string assemblyName)
         {
             // 获取当前应用程序域中的所有已加载程序集
