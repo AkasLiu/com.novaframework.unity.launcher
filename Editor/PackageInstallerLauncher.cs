@@ -46,11 +46,11 @@ namespace NovaFramework.Editor.Launcher
             },
             {
                 "com.novaframework.unity.installer",
-                "https://github.com/AkasLiu/com.novaframework.unity.installer.git"
+                "https://github.com/yoseasoft/com.novaframework.unity.installer.git"
             },
         };
 
-        private static string _launcherPackageName = "com.novaframework.unity.launcher";
+        //private static string _launcherPackageName = "com.novaframework.unity.launcher";
 
         [InitializeOnLoadMethod] // 当编辑器加载时自动检测是否需要启动安装
         static void OnEditorLoaded()
@@ -58,19 +58,17 @@ namespace NovaFramework.Editor.Launcher
             // 检查是否已加载必要的程序集
             if (HasNecessaryAssemblies())
             {
+                Debug.Log("程序集已存在，跳过安装流程");
                 // 延迟执行，确保编辑器完全加载
                 EditorApplication.delayCall += () =>
                 {
-                    Debug.Log("Installation not complete or packages installed but configuration not finished, starting AutoInstallManager...");
-                    TryLoadAndStartAutoInstallManager();
-                   
+                    //TryLoadAndStartAutoInstallManager();
                 };
             }
             else
             {
                 // 如果程序集不存在，说明需要执行安装
-                Debug.Log("Required assemblies not found, preparing to download installer and common packages...");
-                
+                Debug.Log("程序集不存在，准备下载安装程序和公共包...");
                 // 自动开始安装流程
                 EditorApplication.delayCall += () =>
                 {
@@ -641,31 +639,14 @@ namespace NovaFramework.Editor.Launcher
         /// <returns></returns>
         private static bool HasNecessaryAssemblies()
         {
-            return IsAssemblyExists("NovaEditor.Installer") || IsAssemblyExists("NovaEditor.Common");
+            return IsAssemblyExists("NovaEditor.Common") && IsAssemblyExists("NovaEditor.Installer");
         }
     
         // 添加菜单项，允许用户手动启动自动安装
         [MenuItem("Tools/NovaFramework/启动框架自动安装 _F7", false, 1)]
         public static void ManualStartInstallation()
         {
-            // 检查Nova.Installer.Editor程序集是否存在
-            if (HasNecessaryAssemblies())
-            {
-                Debug.Log("Required assemblies already exist, attempting to start AutoInstallManager...");
-                
-                // 延迟执行，确保编辑器完全加载
-                EditorApplication.delayCall += () =>
-                {
-                    TryLoadAndStartAutoInstallManager();
-                };
-            }
-            else
-            {
-                Debug.Log("Required assemblies not found, starting installation process...");
-                
-                // 开始新的安装流程
-                ExecuteInstallation();
-            }
+            OnEditorLoaded();
         }
     }
 }
